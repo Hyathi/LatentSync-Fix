@@ -61,7 +61,7 @@ def func(paths, process_temp_dir, device_id, resolution):
         if os.path.isfile(video_output):
             continue
         try:
-            video_frames = video_processor.affine_transform_video(video_input)
+            video_frames = video_processor.affine_transform_video_smooth(video_input)
         except Exception as e:  # Handle the exception of face not detcted
             print(f"Exception: {e} - {video_input}")
             continue
@@ -105,8 +105,8 @@ def affine_transform_multi_gpus(input_dir, output_dir, temp_dir, resolution, num
 
 
 if __name__ == "__main__":
-    input_dir = "/mnt/bn/maliva-gen-ai-v2/chunyu.li/VoxCeleb2/segmented"
-    output_dir = "/mnt/bn/maliva-gen-ai-v2/chunyu.li/VoxCeleb2/affine_transformed"
+    input_dir = "data/imported"
+    output_dir = "data/affine_transformed_3"
     temp_dir = "temp"
     resolution = 256
     num_workers = 10  # How many processes per device

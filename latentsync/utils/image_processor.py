@@ -21,6 +21,8 @@ import numpy as np
 from typing import Union
 from .affine_transform import AlignRestore
 from .face_detector import FaceDetector
+from rich import print
+from .filters import apply_savgol_filter
 
 
 def load_fixed_mask(resolution: int, mask_image_path="latentsync/utils/mask.png") -> torch.Tensor:
@@ -51,7 +53,7 @@ class ImageProcessor:
         else:
             self.face_detector = FaceDetector(device=device)
 
-    def affine_transform(self, image: torch.Tensor) -> np.ndarray:
+    def _get_landmarks(self, image: torch.Tensor) -> np.ndarray:
         if self.face_detector is None:
             raise NotImplementedError("Using the CPU for face detection is not supported")
         bbox, landmark_2d_106 = self.face_detector(image)
@@ -63,7 +65,19 @@ class ImageProcessor:
         pt_nose = np.mean(landmark_2d_106[[74, 77, 83, 86]], axis=0)  # nose center
 
         landmarks3 = np.round([pt_left_eye, pt_right_eye, pt_nose])
+        
+        return landmarks3
 
+    def affine_transform(self, image: torch.Tensor) -> np.ndarray:
+        landmarks3 = self._get_landmarks(image)
+
+        face, affine_matrix = self.restorer.align_warp_face(image.copy(), landmarks3=landmarks3, smooth=True)
+        box = [0, 0, face.shape[1], face.shape[0]]  # x1, y1, x2, y2
+        face = cv2.resize(face, (self.resolution, self.resolution), interpolation=cv2.INTER_LANCZOS4)
+        face = rearrange(torch.from_numpy(face), "h w c -> c h w")
+        return face, box, affine_matrix
+
+    def affine_transform_from_landmarks(self, image: torch.Tensor, landmarks3: np.ndarray) -> np.ndarray:
         face, affine_matrix = self.restorer.align_warp_face(image.copy(), landmarks3=landmarks3, smooth=True)
         box = [0, 0, face.shape[1], face.shape[0]]  # x1, y1, x2, y2
         face = cv2.resize(face, (self.resolution, self.resolution), interpolation=cv2.INTER_LANCZOS4)
@@ -104,6 +118,27 @@ class VideoProcessor:
     def __init__(self, resolution: int = 512, device: str = "cpu"):
         self.image_processor = ImageProcessor(resolution, device)
 
+    def _collect_landmarks(self, video_path):
+        video_frames = read_video(video_path, change_fps=False)
+        results = []
+        for frame in video_frames:
+            landmarks = self.image_processor._get_landmarks(frame)
+            results.append(landmarks)
+        return video_frames, results
+
+    def affine_transform_video_smooth(self, video_path):
+        video_frames, landmarks = self._collect_landmarks(video_path)
+        landmarks = np.stack(landmarks)
+        landmarks = apply_savgol_filter(landmarks, 11, 3)
+        
+        results = []
+        for frame, landmarks3 in zip(video_frames, landmarks):
+            frame, _, _ = self.image_processor.affine_transform_from_landmarks(frame, landmarks3)
+            results.append(frame)
+        results = torch.stack(results)
+        results = rearrange(results, "f c h w -> f h w c").numpy()
+        return results
+
     def affine_transform_video(self, video_path):
         video_frames = read_video(video_path, change_fps=False)
         results = []
@@ -118,5 +153,5 @@ class VideoProcessor:
 
 if __name__ == "__main__":
     video_processor = VideoProcessor(256, "cuda")
-    video_frames = video_processor.affine_transform_video("assets/demo2_video.mp4")
+    video_frames = video_processor.affine_transform_video_smooth("assets/demo2_video.mp4")
     write_video("output.mp4", video_frames, fps=25)
