@@ -106,7 +106,7 @@ def affine_transform_multi_gpus(input_dir, output_dir, temp_dir, resolution, num
 
 if __name__ == "__main__":
     input_dir = "data/imported"
-    output_dir = "data/affine_transformed_3"
+    output_dir = "data/affine_transformed_5"
     temp_dir = "temp"
     resolution = 256
     num_workers = 10  # How many processes per device

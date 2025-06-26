@@ -129,7 +129,7 @@ class VideoProcessor:
     def affine_transform_video_smooth(self, video_path):
         video_frames, landmarks = self._collect_landmarks(video_path)
         landmarks = np.stack(landmarks)
-        landmarks = apply_savgol_filter(landmarks, 11, 3)
+        landmarks = apply_savgol_filter(landmarks, 15, 2)
         
         results = []
         for frame, landmarks3 in zip(video_frames, landmarks):
