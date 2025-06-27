@@ -44,27 +44,11 @@ class AlignRestore(object):
     def restore_img(self, input_img, face, affine_matrix):
         h, w, _ = input_img.shape
 
-        # Convert numpy array to tensor if needed
         if isinstance(affine_matrix, np.ndarray):
-            affine_matrix = torch.from_numpy(affine_matrix)
-
-        # Ensure affine_matrix has the correct shape [B, 2, 3]
-        if affine_matrix.dim() == 2:
-            # Shape is [2, 3], add batch dimension to get [1, 2, 3]
-            affine_matrix = affine_matrix.unsqueeze(0)
-        elif affine_matrix.dim() == 4 and affine_matrix.shape[0] == 1 and affine_matrix.shape[1] == 1:
-            # Shape is [1, 1, 2, 3], squeeze to get [1, 2, 3]
-            affine_matrix = affine_matrix.squeeze(1)
-
-        # Validate the final shape
-        if affine_matrix.shape[-2:] != (2, 3):
-            raise ValueError(f"Affine matrix must have shape [..., 2, 3], got {affine_matrix.shape}")
-
-        # Ensure affine_matrix is on the correct device and dtype
-        affine_matrix = affine_matrix.to(device=self.device, dtype=self.dtype)
+            affine_matrix = torch.from_numpy(affine_matrix).to(device=self.device, dtype=self.dtype).unsqueeze(0)
 
         inv_affine_matrix = kornia.geometry.transform.invert_affine_transform(affine_matrix)
-        face = face.to(device=self.device, dtype=self.dtype).unsqueeze(0)
+        face = face.to(dtype=self.dtype).unsqueeze(0)
 
         inv_face = kornia.geometry.transform.warp_affine(
             face, inv_affine_matrix, (h, w), mode="bilinear", padding_mode="fill", fill_value=self.fill_value

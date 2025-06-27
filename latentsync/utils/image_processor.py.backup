@@ -115,37 +115,6 @@ class ImageProcessor:
         pixel_values = self.normalize(images / 255.0)
         return pixel_values
 
-    def affine_transform_video_with_metadata(self, video_frames: np.ndarray,
-                                           enhanced_smoothing: bool = True,
-                                           landmark_smoothing_params: Optional[dict] = None,
-                                           matrix_smoothing_params: Optional[dict] = None):
-        """
-        Apply affine transformation to video frames with enhanced smoothing while returning metadata.
-
-        This method applies enhanced smoothing to landmarks and affine matrices to reduce
-        high-frequency vibrations in the output video while maintaining the required
-        return format for the lipsync pipeline.
-
-        Args:
-            video_frames: Input video frames as numpy array of shape (N, H, W, C)
-            enhanced_smoothing: Whether to apply enhanced smoothing (default: True)
-            landmark_smoothing_params: Optional parameters for landmark smoothing
-            matrix_smoothing_params: Optional parameters for matrix smoothing
-
-        Returns:
-            tuple: (faces, boxes, affine_matrices)
-                - faces: Torch tensor of aligned face crops (N, C, H, W)
-                - boxes: List of bounding box coordinates for each frame
-                - affine_matrices: List of affine transformation matrices
-        """
-        # Create a VideoProcessor instance to handle the enhanced processing
-        video_processor = VideoProcessor(resolution=self.resolution, device='cuda' if torch.cuda.is_available() else 'cpu')
-
-        # Delegate to the VideoProcessor's implementation
-        return video_processor.affine_transform_video_with_metadata(
-            video_frames, enhanced_smoothing, landmark_smoothing_params, matrix_smoothing_params
-        )
-
 
 class VideoProcessor:
     def __init__(self, resolution: int = 512, device: str = "cpu"):
@@ -213,20 +182,8 @@ class VideoProcessor:
         if len(affine_matrices) < window_length:
             return affine_matrices
 
-        # Convert to numpy array for processing, ensuring consistent shape
-        matrices_list = []
-        for m in affine_matrices:
-            if hasattr(m, 'cpu'):
-                matrix = m.cpu().numpy()
-            else:
-                matrix = m
-
-            # Ensure matrix is 2D [2, 3] for processing
-            if matrix.ndim == 3 and matrix.shape[0] == 1:  # [1, 2, 3] -> [2, 3]
-                matrix = matrix.squeeze(0)
-            matrices_list.append(matrix)
-
-        matrices_array = np.stack(matrices_list)
+        # Convert to numpy array for processing
+        matrices_array = np.stack([m.cpu().numpy() if hasattr(m, 'cpu') else m for m in affine_matrices])
 
         # Smooth each element of the transformation matrix
         smoothed_matrices = np.zeros_like(matrices_array)
@@ -250,7 +207,6 @@ class VideoProcessor:
                     sigma=gaussian_sigma
                 )
 
-        # Return matrices with consistent [2, 3] shape
         return [torch.from_numpy(matrix) for matrix in smoothed_matrices]
 
     def _apply_temporal_consistency_filter(self, frames: list, alpha: float = 0.7) -> list:
@@ -279,105 +235,6 @@ class VideoProcessor:
             smoothed_frames.append(blended_frame.to(frames[i].dtype))
 
         return smoothed_frames
-
-    def affine_transform_video_with_metadata(self, video_frames: np.ndarray,
-                                           enhanced_smoothing: bool = True,
-                                           landmark_smoothing_params: Optional[dict] = None,
-                                           matrix_smoothing_params: Optional[dict] = None):
-        """
-        Apply affine transformation to video frames with enhanced smoothing, returning faces, boxes, and matrices.
-
-        This method is designed for use in pipelines that need access to the transformation metadata
-        (like lipsync_pipeline.py) while still benefiting from enhanced smoothing.
-
-        Args:
-            video_frames: Input video frames as numpy array
-            enhanced_smoothing: Whether to use enhanced multi-stage smoothing
-            landmark_smoothing_params: Parameters for landmark smoothing
-            matrix_smoothing_params: Parameters for affine matrix smoothing
-
-        Returns:
-            tuple: (faces, boxes, affine_matrices)
-                - faces: torch.Tensor of transformed faces
-                - boxes: list of bounding boxes
-                - affine_matrices: list of affine transformation matrices
-        """
-        # Collect landmarks from frames
-        landmarks = []
-        for frame in video_frames:
-            try:
-                landmarks3 = self.image_processor._get_landmarks(frame)
-                landmarks.append(landmarks3)
-            except RuntimeError:
-                # Fallback: use previous landmarks or default
-                if landmarks:
-                    landmarks3 = landmarks[-1]
-                else:
-                    # Create default landmarks (center of frame)
-                    h, w = frame.shape[:2]
-                    landmarks3 = np.array([[w//2, h//2], [w//2, h//2], [w//2, h//2]], dtype=np.float32)
-                landmarks.append(landmarks3)
-
-        landmarks = np.stack(landmarks)
-
-        # Set default parameters
-        if landmark_smoothing_params is None:
-            landmark_smoothing_params = {
-                'primary_window': 15,
-                'primary_poly': 2,
-                'secondary_window': 7,
-                'secondary_poly': 1,
-                'gaussian_sigma': 1.0
-            }
-
-        if matrix_smoothing_params is None:
-            matrix_smoothing_params = {
-                'window_length': 9,
-                'poly_order': 2,
-                'gaussian_sigma': 0.8
-            }
-
-        # Apply enhanced landmark smoothing
-        if enhanced_smoothing:
-            landmarks = self._smooth_landmarks_multi_stage(landmarks, **landmark_smoothing_params)
-        else:
-            landmarks = apply_savgol_filter(landmarks, 15, 2)
-
-        # Collect faces, boxes, and affine matrices
-        faces = []
-        boxes = []
-        affine_matrices = []
-
-        for frame, landmarks3 in zip(video_frames, landmarks):
-            # Use the smoothed landmarks for transformation
-            face, box, affine_matrix = self.image_processor.affine_transform_from_landmarks(frame, landmarks3)
-            faces.append(face)
-            boxes.append(box)
-            affine_matrices.append(affine_matrix)
-
-        # Apply smoothing to affine matrices if enhanced smoothing is enabled
-        if enhanced_smoothing and len(affine_matrices) > 1:
-            try:
-                smoothed_matrices = self._smooth_affine_matrices(affine_matrices, **matrix_smoothing_params)
-
-                # Re-apply transformations with smoothed matrices and collect metadata
-                faces = []
-                for frame, landmarks3, smooth_matrix in zip(video_frames, landmarks, smoothed_matrices):
-                    # Use the smoothed matrix for transformation
-                    face = self._apply_smoothed_transform(frame, landmarks3, smooth_matrix)
-                    faces.append(face)
-
-                # Update affine_matrices with smoothed versions
-                affine_matrices = smoothed_matrices
-
-            except Exception as e:
-                print(f"Enhanced smoothing failed, using original method: {e}")
-                # Fallback to original processing if smoothing fails
-                pass
-
-        # Convert faces to tensor and return
-        faces = torch.stack(faces)
-        return faces, boxes, affine_matrices
 
     def affine_transform_video_smooth(self, video_path,
                                     enhanced_smoothing: bool = True,
@@ -543,13 +400,7 @@ class VideoProcessor:
             affine_matrix = torch.from_numpy(affine_matrix)
 
         affine_matrix = affine_matrix.to(device=self.image_processor.restorer.device,
-                                       dtype=self.image_processor.restorer.dtype)
-
-        # Add batch dimension only if needed (should be [B, 2, 3])
-        if affine_matrix.dim() == 2:  # Shape [2, 3] -> [1, 2, 3]
-            affine_matrix = affine_matrix.unsqueeze(0)
-        elif affine_matrix.dim() == 4:  # Shape [1, 1, 2, 3] -> [1, 2, 3]
-            affine_matrix = affine_matrix.squeeze(1)
+                                       dtype=self.image_processor.restorer.dtype).unsqueeze(0)
 
         # Apply the transformation using kornia
         import kornia

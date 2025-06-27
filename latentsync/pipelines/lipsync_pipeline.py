@@ -249,19 +249,41 @@ class LipsyncPipeline(DiffusionPipeline):
         images = images.cpu().numpy()
         return images
 
-    def affine_transform_video(self, video_frames: np.ndarray):
-        faces = []
-        boxes = []
-        affine_matrices = []
-        print(f"Affine transforming {len(video_frames)} faces...")
-        for frame in tqdm.tqdm(video_frames):
-            face, box, affine_matrix = self.image_processor.affine_transform(frame)
-            faces.append(face)
-            boxes.append(box)
-            affine_matrices.append(affine_matrix)
+    def affine_transform_video(self, video_frames: np.ndarray, enhanced_smoothing: bool = True):
+        """
+        Apply affine transformation to video frames with enhanced smoothing.
 
-        faces = torch.stack(faces)
-        return faces, boxes, affine_matrices
+        Args:
+            video_frames: Input video frames as numpy array
+            enhanced_smoothing: Whether to use enhanced smoothing (default: True)
+
+        Returns:
+            tuple: (faces, boxes, affine_matrices)
+        """
+        print(f"Affine transforming {len(video_frames)} faces with {'enhanced' if enhanced_smoothing else 'standard'} smoothing...")
+
+        try:
+            # Use the new enhanced method with metadata
+            faces, boxes, affine_matrices = self.image_processor.affine_transform_video_with_metadata(
+                video_frames, enhanced_smoothing=enhanced_smoothing
+            )
+            return faces, boxes, affine_matrices
+
+        except Exception as e:
+            print(f"Enhanced affine transformation failed, falling back to original method: {e}")
+            # Fallback to original frame-by-frame processing
+            faces = []
+            boxes = []
+            affine_matrices = []
+
+            for frame in tqdm.tqdm(video_frames):
+                face, box, affine_matrix = self.image_processor.affine_transform(frame)
+                faces.append(face)
+                boxes.append(box)
+                affine_matrices.append(affine_matrix)
+
+            faces = torch.stack(faces)
+            return faces, boxes, affine_matrices
 
     def restore_video(self, faces: torch.Tensor, video_frames: np.ndarray, boxes: list, affine_matrices: list):
         video_frames = video_frames[: len(faces)]

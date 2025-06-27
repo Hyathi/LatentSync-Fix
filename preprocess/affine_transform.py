@@ -61,10 +61,21 @@ def func(paths, process_temp_dir, device_id, resolution):
         if os.path.isfile(video_output):
             continue
         try:
-            video_frames = video_processor.affine_transform_video_smooth(video_input)
-        except Exception as e:  # Handle the exception of face not detcted
+            # Use enhanced smoothing by default for better results
+            video_frames = video_processor.affine_transform_video_smooth(
+                video_input, enhanced_smoothing=True
+            )
+        except Exception as e:  # Handle the exception of face not detected or dtype issues
             print(f"Exception: {e} - {video_input}")
-            continue
+            # Try with fallback to original method if enhanced fails
+            try:
+                print(f"Retrying with original smoothing method for: {video_input}")
+                video_frames = video_processor.affine_transform_video_smooth(
+                    video_input, enhanced_smoothing=False
+                )
+            except Exception as e2:
+                print(f"Both methods failed for {video_input}: {e2}")
+                continue
 
         os.makedirs(os.path.dirname(video_output), exist_ok=True)
         combine_video_audio(video_frames, video_input, video_output, process_temp_dir)
@@ -106,7 +117,7 @@ def affine_transform_multi_gpus(input_dir, output_dir, temp_dir, resolution, num
 
 if __name__ == "__main__":
     input_dir = "data/imported"
-    output_dir = "data/affine_transformed_5"
+    output_dir = "data/affine_transformed_7"
     temp_dir = "temp"
     resolution = 256
     num_workers = 10  # How many processes per device
