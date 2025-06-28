@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from latentsync.utils.util import write_video
+from latentsync.utils.util import write_video_ffmpeg
 from latentsync.utils.image_processor import VideoProcessor
 import torch
 import os
@@ -40,7 +40,7 @@ def combine_video_audio(video_frames, video_input_path, video_output_path, proce
     audio_temp = os.path.join(process_temp_dir, f"{video_name}_temp.wav")
     video_temp = os.path.join(process_temp_dir, f"{video_name}_temp.mp4")
 
-    write_video(video_temp, video_frames, fps=25)
+    write_video_ffmpeg(video_temp, video_frames, fps=25)
 
     command = f"ffmpeg -y -loglevel error -i {video_input_path} -q:a 0 -map a {audio_temp}"
     subprocess.run(command, shell=True)
@@ -116,10 +116,10 @@ def affine_transform_multi_gpus(input_dir, output_dir, temp_dir, resolution, num
 
 
 if __name__ == "__main__":
-    input_dir = "data/imported"
-    output_dir = "data/affine_transformed_7"
+    input_dir = "data/Dharma"
+    output_dir = "data/affine_transformed_2"
     temp_dir = "temp"
     resolution = 256
-    num_workers = 10  # How many processes per device
+    num_workers = 1  # How many processes per device
 
     affine_transform_multi_gpus(input_dir, output_dir, temp_dir, resolution, num_workers)

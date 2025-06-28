@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import os
+import random
 import numpy as np
 import json
 from typing import Union
@@ -123,6 +124,28 @@ def write_video(video_output_path: str, video_frames: np.ndarray, fps: int):
     ) as writer:
         for video_frame in video_frames:
             writer.append_data(video_frame)
+
+# A write video function that saves the frames in a temp directory and uses ffmpeg to convert it to highest quality mp4
+def write_video_ffmpeg(video_output_path: str, video_frames: np.ndarray, fps: int):
+    temp_dir = "frames_temp"
+    if os.path.exists(temp_dir):
+        shutil.rmtree(temp_dir)
+    os.makedirs(temp_dir, exist_ok=True)
+
+    # Save the frames as individual images
+    for i, frame in enumerate(video_frames):
+        frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+        cv2.imwrite(os.path.join(temp_dir, f"frame_{i:04d}.png"), frame)
+
+    # Use ffmpeg to convert the images to a video
+    command = (
+        f"ffmpeg -loglevel error -y -nostdin -framerate {fps} -i {os.path.join(temp_dir, 'frame_%04d.png')} "
+        f"-c:v libx264 -crf 18 -pix_fmt yuv420p {video_output_path}"
+    )
+    subprocess.run(command, shell=True)
+
+    # Clean up the temporary directory
+    shutil.rmtree(temp_dir)
 
 
 def write_video_cv2(video_output_path: str, video_frames: np.ndarray, fps: int):

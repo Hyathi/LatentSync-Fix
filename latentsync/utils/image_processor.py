@@ -430,17 +430,6 @@ class VideoProcessor:
             results.append(face)
             affine_matrices.append(affine_matrix)
 
-        # Apply smoothing to affine matrices if enhanced smoothing is enabled
-        if enhanced_smoothing and len(affine_matrices) > 1:
-            smoothed_matrices = self._smooth_affine_matrices(affine_matrices, **matrix_smoothing_params)
-
-            # Re-apply transformations with smoothed matrices
-            results = []
-            for frame, landmarks3, smooth_matrix in zip(video_frames, landmarks, smoothed_matrices):
-                # Use the smoothed matrix directly for transformation
-                face = self._apply_smoothed_transform(frame, landmarks3, smooth_matrix)
-                results.append(face)
-
         results = torch.stack(results)
         results = rearrange(results, "f c h w -> f h w c").numpy()
         return results
