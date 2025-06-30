@@ -355,26 +355,6 @@ class VideoProcessor:
             boxes.append(box)
             affine_matrices.append(affine_matrix)
 
-        # Apply smoothing to affine matrices if enhanced smoothing is enabled
-        if enhanced_smoothing and len(affine_matrices) > 1:
-            try:
-                smoothed_matrices = self._smooth_affine_matrices(affine_matrices, **matrix_smoothing_params)
-
-                # Re-apply transformations with smoothed matrices and collect metadata
-                faces = []
-                for frame, landmarks3, smooth_matrix in zip(video_frames, landmarks, smoothed_matrices):
-                    # Use the smoothed matrix for transformation
-                    face = self._apply_smoothed_transform(frame, landmarks3, smooth_matrix)
-                    faces.append(face)
-
-                # Update affine_matrices with smoothed versions
-                affine_matrices = smoothed_matrices
-
-            except Exception as e:
-                print(f"Enhanced smoothing failed, using original method: {e}")
-                # Fallback to original processing if smoothing fails
-                pass
-
         # Convert faces to tensor and return
         faces = torch.stack(faces)
         return faces, boxes, affine_matrices

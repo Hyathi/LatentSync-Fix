@@ -33,7 +33,7 @@ for video_file in "${video_dir}"/*.mp4; do
 
     if [[ -f "$audio_file" ]]; then
         uv run -m scripts.inference \
-            --unet_config_path "configs/unet/stage2_512.yaml" \
+            --unet_config_path "configs/unet/stage2.yaml" \
             --inference_ckpt_path "${ckpt_path}" \
             --inference_steps 20 \
             --guidance_scale 1 \
